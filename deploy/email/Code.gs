@@ -32,6 +32,8 @@ function doPost(e) {
     if (cache.get('nonce:' + data.nonce)) return jsonOutput({ ok: false });
     if (MailApp.getRemainingDailyQuota() < 1) return jsonOutput({ ok: false });
     cache.put('nonce:' + data.nonce, 'used', 600);
+    // Keep only the replay check atomic; email delivery must not serialize other users.
+    lock.releaseLock();
     MailApp.sendEmail({to: data.email, subject: 'Mã xác thực Chấm công • Trần Văn Vũ',
       body: 'Mã xác thực của bạn: ' + data.code + '\nMã có hiệu lực 10 phút. Không chia sẻ mã với người khác.',
       name: 'Vũ • Chấm công'});

@@ -4,11 +4,19 @@ const crypto = require('node:crypto');
 const assert = require('node:assert/strict');
 const secret = 'unit-test-signing-secret-only-not-for-production';
 const sent = [], cache = new Map();
+let lockHeld = false;
 const sandbox = {
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: text => ({ text, setMimeType() { return this; } }) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: () => secret }) },
   Utilities: { Charset: { UTF_8: 'utf8' }, computeHmacSha256Signature: (data, key) => [...crypto.createHmac('sha256', key).update(data).digest()] },
-  LockService: { getScriptLock: () => ({ tryLock: () => true, hasLock: () => true, releaseLock() {} }) },
+  LockService: { getScriptLock: () => {
+    let owned = false;
+    return {
+      tryLock() { if (lockHeld) return false; lockHeld = owned = true; return true; },
+      hasLock: () => owned,
+      releaseLock() { if (owned) { owned = false; lockHeld = false; } },
+    };
+  } },
   CacheService: { getScriptCache: () => ({ get: key => cache.get(key), put: (key,value) => cache.set(key,value) }) },
   MailApp: { getRemainingDailyQuota: () => 100, sendEmail: value => sent.push(value) },
 };
@@ -26,4 +34,18 @@ assert.equal(sent[0].to, payload.email);
 assert.match(sent[0].body,/123456/);
 assert.equal(run(payload).ok,false,'Reject replay');
 assert.equal(sent.length,1,'Never resend a replay');
-console.log('Email bridge: signed request, tampering, expiry, injection and replay checks passed (mock MailApp; no email sent).');
+function fresh(email) {
+  const value = { ...payload, email, nonce: crypto.randomBytes(16).toString('hex') };
+  value.signature = crypto.createHmac('sha256',secret).update([value.email,value.code,value.timestamp,value.nonce].join('|')).digest('hex');
+  return value;
+}
+const concurrent = fresh('second@example.com');
+let concurrentResult;
+sandbox.MailApp.sendEmail = value => {
+  sent.push(value);
+  if (value.to === 'first@example.com') concurrentResult = run(concurrent);
+};
+assert.equal(run(fresh('first@example.com')).ok, true);
+assert.equal(concurrentResult.ok, true, 'Another user can request OTP while the first email is being sent');
+assert.equal(sent.length,3);
+console.log('Email bridge: signature, tampering, expiry, injection, replay and concurrent-send checks passed (mock MailApp; no email sent).');
