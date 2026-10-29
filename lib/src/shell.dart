@@ -197,7 +197,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     ),
                     const Spacer(),
                     const Text(
-                      'CA LÀM / 07',
+                      'HÔM NAY',
                       style: TextStyle(
                         color: Colors.white54,
                         fontSize: 10,

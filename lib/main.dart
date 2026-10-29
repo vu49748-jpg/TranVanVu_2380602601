@@ -23,6 +23,9 @@ class AttendanceApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = context.watch<Session>();
     return MaterialApp(
+      key: ValueKey(
+        '${s.api?.dio.options.baseUrl}|${s.user?['id'] ?? 'guest'}',
+      ),
       locale: const Locale('vi'),
       supportedLocales: const [Locale('vi'), Locale('en')],
       localizationsDelegates: const [

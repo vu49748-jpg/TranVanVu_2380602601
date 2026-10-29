@@ -37,7 +37,7 @@ Không có mật khẩu/OTP demo, không trả OTP về app, không dùng endpoi
 
 ## Chạy Flutter
 
-Môi trường đã dùng: Flutter **3.47.4**, Dart **3.13.3**, JDK **21**, Android SDK **36**; Android tối thiểu **6.0 / API 23**. Dùng cùng phiên bản Flutter để tránh lệch dependency. Giữ `pubspec.lock`.
+Môi trường đã dùng: Flutter **3.47.4**, Dart **3.13.3**, JDK **21**, Android SDK **36**; APK thực tế yêu cầu Android tối thiểu **7.0 / API 24**. Dùng cùng phiên bản Flutter để tránh lệch dependency. Giữ `pubspec.lock`.
 
 ```powershell
 cd D:\KiemTraLTDD\TranVanVu_2380602601
@@ -82,6 +82,14 @@ flutter analyze
 flutter test
 node deploy/email/test_bridge.cjs
 ```
+
+Kiểm tra cảm biến và secure storage trên điện thoại thật (bản test sẽ mở trang đo chuyển động):
+
+```powershell
+flutter test integration_test/device_smoke_test.dart -d MA_THIET_BI_ANDROID
+```
+
+Sau đó cài lại APK release để trở về ứng dụng chính.
 
 Backend test dùng database SQLite tạm và mail giả lập **chỉ trong test**, không gửi email. Khi production, backend bắt buộc PostgreSQL. Flutter test sử dụng dữ liệu fixture trong thư mục `test/`; chúng không được đóng gói vào app.
 
