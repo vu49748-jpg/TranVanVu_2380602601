@@ -36,6 +36,11 @@ class AttendanceApp extends StatelessWidget {
       title: 'TranVanVu_2380602601',
       debugShowCheckedModeBanner: false,
       theme: appTheme,
+      builder: (context, child) => MediaQuery(
+        // Keep Vietnamese time display and input validation on the same 24-hour clock.
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+        child: child ?? const SizedBox.shrink(),
+      ),
       home: s.loading
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
           : s.api == null

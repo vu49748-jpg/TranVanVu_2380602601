@@ -217,7 +217,7 @@ class EvidenceView extends StatelessWidget {
               dateText(evidence['captured_at'], full: true),
             ),
             if (flags.isEmpty)
-              const StatusPill('Đủ điều kiện khi ghi nhận')
+              const StatusPill('GPS và QR đạt kiểm tra')
             else
               ...flags.map(
                 (x) => Padding(
