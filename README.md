@@ -8,7 +8,9 @@
 
 Source đã triển khai các chức năng bên dưới. Bài chỉ sẵn sàng nộp sau khi hoàn tất **deploy API HTTPS**, **gửi/nhận Email OTP thật** và **kiểm thử GPS/camera/cảm biến trên điện thoại thật**. Xem [hướng dẫn deploy](docs/DEPLOY.md) và [kịch bản nghiệm thu](docs/DEMO.md).
 
-Không có mật khẩu/OTP demo, không trả OTP về app, không dùng endpoint localhost trong ứng dụng. Lần mở đầu tiên cần nhập URL API công khai đã deploy; có thể nhúng URL lúc build.
+Không có mật khẩu/OTP demo, không trả OTP về app, không dùng endpoint localhost trong ứng dụng. App mặc định kết nối API đã deploy tại `https://tranvanvu-2380602601-api.onrender.com`; có thể thay máy chủ trong phần thiết lập kết nối hoặc bằng `API_BASE_URL` lúc build.
+
+API công khai: [kiểm tra trạng thái](https://tranvanvu-2380602601-api.onrender.com/health), [tài liệu API](https://tranvanvu-2380602601-api.onrender.com/docs). Email OTP và các luồng nghiệp vụ vẫn cần nghiệm thu thật theo [trạng thái kiểm chứng](docs/KIEM_CHUNG.md).
 
 ## Đối chiếu đề
 
@@ -46,7 +48,7 @@ flutter devices
 flutter run -d MA_THIET_BI_ANDROID
 ```
 
-Mở app và nhập URL backend HTTPS đã deploy. Cấu hình được lưu trên từng thiết bị.
+Mở app để đăng nhập vào API Render mặc định. Nếu dùng backend khác, chọn **Thiết lập kết nối** và nhập URL HTTPS đã deploy; cấu hình được lưu trên từng thiết bị.
 
 Hoặc nhúng URL thật từ lúc chạy/build:
 
@@ -55,7 +57,7 @@ flutter run -d MA_THIET_BI_ANDROID --dart-define=API_BASE_URL=https://TEN_API_TH
 .\scripts\build_android.ps1 -ApiBaseUrl https://TEN_API_THAT.onrender.com
 ```
 
-Nếu chưa có URL, vẫn có thể build bằng `.\scripts\build_android.ps1`, rồi nhập URL trong app sau khi deploy. APK ở `artifacts/TranVanVu_2380602601.apk`.
+Có thể build bằng `.\scripts\build_android.ps1` để dùng URL mặc định. APK ở `artifacts/TranVanVu_2380602601.apk`.
 
 ## Cấu trúc
 
@@ -90,6 +92,14 @@ flutter test integration_test/device_smoke_test.dart -d MA_THIET_BI_ANDROID
 ```
 
 Sau đó cài lại APK release để trở về ứng dụng chính.
+
+Để kiểm tra đăng nhập OTP thật và CRUD trên API đã deploy, chạy trực tiếp trong terminal cá nhân:
+
+```powershell
+python scripts/verify_live_backend.py
+```
+
+Script đọc cấu hình riêng `backend/.env.deploy`, yêu cầu nhập OTP trong terminal ở chế độ ẩn, tạo dữ liệu có tên kiểm tra tạm rồi dọn đúng các bản ghi vừa tạo. Kết quả ở `artifacts/live_api_report.json`; nhật ký thao tác phía máy chủ vẫn được giữ. Chưa chạy live script này thì không coi luồng OTP và CRUD production là đã nghiệm thu.
 
 Backend test dùng database SQLite tạm và mail giả lập **chỉ trong test**, không gửi email. Khi production, backend bắt buộc PostgreSQL. Flutter test sử dụng dữ liệu fixture trong thư mục `test/`; chúng không được đóng gói vào app.
 

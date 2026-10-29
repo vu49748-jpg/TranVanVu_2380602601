@@ -15,7 +15,10 @@ class Session extends ChangeNotifier {
     bootError = null;
     notifyListeners();
     try {
-      const builtUrl = String.fromEnvironment('API_BASE_URL');
+      const builtUrl = String.fromEnvironment(
+        'API_BASE_URL',
+        defaultValue: 'https://tranvanvu-2380602601-api.onrender.com',
+      );
       final url = await storage.read(key: 'server') ?? builtUrl;
       if (url.isNotEmpty && validServer(url)) {
         api = Api(url)..onUnauthorized = expire;
