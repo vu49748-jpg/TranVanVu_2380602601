@@ -1,5 +1,5 @@
 from datetime import datetime, date, time
-from typing import Literal
+from typing import Annotated, Literal
 from pydantic import BaseModel, Field, EmailStr, field_validator, model_validator, ConfigDict
 
 class Strict(BaseModel):
@@ -96,3 +96,28 @@ class CorrectionData(Strict):
 class Review(Strict):
     decision: Literal['approved', 'rejected']
     note: str = Field(min_length=3, max_length=1000)
+
+
+class BiometricEnrollment(Strict):
+    kind: Literal['face', 'fingerprint']
+    device_name: str = Field(min_length=2, max_length=100)
+    public_key: str = Field(min_length=60, max_length=2048)
+
+
+class BiometricLoginChallenge(Strict):
+    device_id: str = Field(min_length=36, max_length=36)
+
+
+EncodedFaceImage = Annotated[str, Field(min_length=32, max_length=1_100_000)]
+
+
+class BiometricProof(Strict):
+    challenge_id: str = Field(min_length=36, max_length=36)
+    signature: str = Field(min_length=64, max_length=256)
+    images: list[EncodedFaceImage] = Field(default_factory=list, max_length=4)
+
+    @model_validator(mode='after')
+    def bounded_images(self):
+        if sum(len(image) for image in self.images) > 4_000_000:
+            raise ValueError('Ảnh vượt giới hạn của một lần xác thực.')
+        return self

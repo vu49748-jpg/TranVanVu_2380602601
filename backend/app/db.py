@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from uuid import uuid4
-from sqlalchemy import create_engine, String, DateTime, Boolean, Integer, Float, ForeignKey, JSON, UniqueConstraint, event
+from sqlalchemy import create_engine, String, Text, DateTime, Boolean, Integer, Float, ForeignKey, JSON, UniqueConstraint, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from .config import DATABASE_URL
 
@@ -45,6 +45,46 @@ class AuthSession(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey('users.id'))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+# These tables are additive: existing accounts, sessions and attendance rows do
+# not need an ALTER TABLE or destructive reset when the application is updated.
+class BiometricDevice(Base):
+    __tablename__ = 'biometric_devices'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id'), index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    device_name: Mapped[str] = mapped_column(String(100))
+    public_key: Mapped[str] = mapped_column(Text)
+    key_fingerprint: Mapped[str] = mapped_column(String(64), unique=True)
+    face_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class BiometricChallenge(Base):
+    __tablename__ = 'biometric_challenges'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id'), index=True)
+    # Enrollment allocates this identifier before the credential exists.
+    device_id: Mapped[str] = mapped_column(String(36), index=True)
+    purpose: Mapped[str] = mapped_column(String(16))
+    kind: Mapped[str] = mapped_column(String(16))
+    payload: Mapped[str] = mapped_column(String(512))
+    pending_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    device_name: Mapped[str] = mapped_column(String(100), default='')
+    steps: Mapped[list] = mapped_column(JSON, default=list)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class BiometricSessionLink(Base):
+    __tablename__ = 'biometric_session_links'
+    session_id: Mapped[str] = mapped_column(ForeignKey('auth_sessions.id'), primary_key=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey('biometric_devices.id'), index=True)
 
 class Throttle(Base):
     __tablename__ = 'throttles'
@@ -128,7 +168,8 @@ def aware(value):
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 def public(obj):
-    hidden = {'password_hash', 'code_hash', 'qr_version'}
+    hidden = {'password_hash', 'code_hash', 'qr_version', 'public_key',
+              'key_fingerprint', 'face_template', 'payload', 'pending_key'}
     return {column.name: (aware(value).isoformat() if isinstance(value, datetime) else value)
             for column in obj.__table__.columns
             if column.name not in hidden

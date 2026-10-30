@@ -10,7 +10,8 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from . import config, mailer
-from .db import User, Challenge, AuthSession, Throttle, get_db, now, aware
+from .db import (User, Challenge, AuthSession, BiometricDevice,
+    BiometricSessionLink, Throttle, get_db, now, aware)
 
 passwords = PasswordHash.recommended()
 dummy_hash = passwords.hash(secrets.token_urlsafe(24))
@@ -76,11 +77,28 @@ def decode(token, kind):
     except (jwt.InvalidTokenError, ValueError):
         raise HTTPException(401, 'Mã hoặc phiên đã hết hạn, vui lòng thử lại.')
 
-def create_session(db, user):
+def create_session(db, user, method='password_otp', device_id=None):
+    if method not in ('password_otp', 'face', 'fingerprint'):
+        raise ValueError('Unsupported authentication method.')
+    if method != 'password_otp':
+        device = db.scalar(select(BiometricDevice).where(BiometricDevice.id == device_id)
+                           .with_for_update().execution_options(populate_existing=True))
+        if (device is None or device.user_id != user.id or device.kind != method
+                or device.revoked or aware(device.expires_at) <= now()):
+            raise HTTPException(401, 'Thiết bị đăng nhập không còn hợp lệ.')
+        # Revocation/deactivation may have happened while camera inference ran.
+        db.refresh(user)
+        if not user.active or not user.verified:
+            raise HTTPException(401, 'Tài khoản chưa xác thực hoặc đã bị khóa.')
     row = AuthSession(user_id=user.id, expires_at=now() + timedelta(hours=config.TOKEN_HOURS))
     db.add(row)
     db.flush()
-    token = signed({'sub': user.id, 'jti': row.id}, config.TOKEN_HOURS * 3600, 'access')
+    claims = {'sub': user.id, 'jti': row.id, 'auth_method': method,
+              'auth_time': int(now().timestamp())}
+    if method != 'password_otp':
+        claims['device_id'] = device_id
+        db.add(BiometricSessionLink(session_id=row.id, device_id=device_id))
+    token = signed(claims, config.TOKEN_HOURS * 3600, 'access')
     db.commit()
     return token
 
@@ -93,7 +111,15 @@ def current_user(request: Request, credentials: HTTPAuthorizationCredentials = D
         raise HTTPException(401, 'Phiên đăng nhập đã hết hạn.')
     if not user or not user.active or not user.verified:
         raise HTTPException(401, 'Tài khoản chưa xác thực hoặc đã bị khóa.')
+    if data.get('auth_method') in ('face', 'fingerprint'):
+        device = db.get(BiometricDevice, data.get('device_id'))
+        link = db.get(BiometricSessionLink, session.id)
+        if (device is None or link is None or link.device_id != device.id
+                or device.user_id != user.id or device.kind != data['auth_method']
+                or device.revoked or aware(device.expires_at) <= now()):
+            raise HTTPException(401, 'Đăng nhập sinh trắc học đã bị thu hồi hoặc hết hạn.')
     request.state.auth_session_id = session.id
+    request.state.auth_claims = data
     return user
 
 def admin(user: User = Depends(current_user)):

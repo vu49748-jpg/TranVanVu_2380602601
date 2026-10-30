@@ -60,3 +60,4 @@ app.*.map.json
 *.keystore
 key.properties
 /artifacts/
+/backend/.face_models/

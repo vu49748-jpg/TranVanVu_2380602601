@@ -10,9 +10,10 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select, func, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from . import config, schemas as s, security as sec, mailer
+from . import config, schemas as s, security as sec, mailer, biometric
 from .db import (Base, engine, get_db, SessionLocal, now, aware, public, User, Challenge,
-    AuthSession, Site, Shift, Assignment, Attendance, Correction, Audit)
+    AuthSession, BiometricDevice, BiometricChallenge, BiometricSessionLink,
+    Site, Shift, Assignment, Attendance, Correction, Audit)
 
 VN = timezone(timedelta(hours=7))
 
@@ -32,6 +33,8 @@ async def lifespan(app):
     yield
 
 app = FastAPI(title='TranVanVu_2380602601 • API chấm công', version='1.0.0', lifespan=lifespan)
+app.add_middleware(biometric.BiometricBodyLimitMiddleware)
+app.include_router(biometric.router)
 
 @app.exception_handler(RequestValidationError)
 async def invalid_input(request, exc):
@@ -110,7 +113,9 @@ def health(db: Session = Depends(get_db)):
         configured = bool(os.getenv('RESEND_API_KEY') and os.getenv('MAIL_FROM'))
     else:
         configured = bool(os.getenv('SMTP_HOST') and os.getenv('SMTP_USERNAME') and os.getenv('SMTP_PASSWORD') and os.getenv('MAIL_FROM'))
-    return {'status': 'ok', 'project': 'TranVanVu_2380602601', 'email_configured': configured, 'server_time': now().isoformat()}
+    return {'status': 'ok', 'project': 'TranVanVu_2380602601', 'email_configured': configured,
+            'server_time': now().isoformat(), 'security_version': '2',
+            'face_ready': biometric.face_ready()}
 
 @app.post('/auth/register', status_code=201)
 def register(data: s.Register, request: Request, db: Session = Depends(get_db)):
@@ -150,7 +155,8 @@ def verify(data: s.Verify, db: Session = Depends(get_db)):
     row.used, user.verified = True, True
     save(db)
     if row.purpose == 'register': return {'message': 'Đã xác thực email. Bạn có thể đăng nhập.'}
-    return {'access_token': sec.create_session(db, user), 'token_type': 'bearer', 'user': public(user)}
+    return {'access_token': sec.create_session(db, user), 'token_type': 'bearer',
+            'user': public(user), 'auth_method': 'password_otp'}
 
 @app.post('/auth/resend')
 def resend(data: s.Resend, db: Session = Depends(get_db)):
@@ -207,6 +213,8 @@ def edit_employee(id: str, data: s.EmployeeEdit, user=Depends(sec.admin), db: Se
     for key, value in data.model_dump().items(): setattr(row, key, value)
     if not row.active:
         db.execute(update(AuthSession).where(AuthSession.user_id == id).values(revoked=True))
+        db.execute(update(BiometricDevice).where(BiometricDevice.user_id == id)
+                   .values(revoked=True, face_template=None))
     audit(db, user, 'Sửa nhân viên', id, {'role': data.role, 'active': data.active})
     save(db)
     return public(row)
@@ -217,7 +225,11 @@ def delete_employee(id: str, user=Depends(sec.admin), db: Session = Depends(get_
     if id == user.id: raise HTTPException(400, 'Không thể xóa tài khoản đang sử dụng.')
     if db.scalar(select(Assignment.id).where(Assignment.user_id == id)) or db.scalar(select(Audit.id).where(Audit.user_id == id)):
         raise HTTPException(409, 'Nhân viên có lịch sử. Hãy khóa tài khoản để giữ dữ liệu chấm công.')
-    for model in (Challenge, AuthSession):
+    device_ids = select(BiometricDevice.id).where(BiometricDevice.user_id == id)
+    for link in db.scalars(select(BiometricSessionLink).where(BiometricSessionLink.device_id.in_(device_ids))):
+        db.delete(link)
+    db.flush()
+    for model in (BiometricChallenge, BiometricDevice, Challenge, AuthSession):
         for child in db.scalars(select(model).where(model.user_id == id)): db.delete(child)
     db.delete(row)
     audit(db, user, 'Xóa nhân viên', id)
